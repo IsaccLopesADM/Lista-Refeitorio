@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ADM Refeitório Offline</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="./styles.css?v=2" />
+  <meta name="theme-color" content="#0f172a" />
+</head>
+<body>
+  <div id="toast" class="toast hidden"></div>
+
+  <main class="app-shell">
+    <section id="loginView" class="login-card">
+      <div class="brand">
+        <div class="brand-mark">✓</div>
+        <div>
+          <h1>Refeitório Offline</h1>
+          <p>Controle de refeições por QR Code</p>
+        </div>
+      </div>
+
+      <label>E-mail</label>
+      <input id="loginEmail" type="email" placeholder="admin@empresa.com" autocomplete="username" />
+
+      <label>Senha</label>
+      <input id="loginPassword" type="password" placeholder="Sua senha" autocomplete="current-password" />
+
+      <button id="btnLogin" class="primary">Entrar</button>
+      <p class="hint">Edite o arquivo <b>config.js</b> com a URL e a chave pública do Supabase antes de usar.</p>
+    </section>
+
+    <section id="appView" class="hidden app-layout">
+      <aside class="sidebar">
+        <div class="side-brand">
+          <div class="side-mark">✓</div>
+          <div>
+            <strong>Refeitório</strong>
+            <span id="sideProfile">Offline</span>
+            <small id="userInfo">Usuário</small>
+          </div>
+        </div>
+
+        <nav class="side-nav">
+          <button class="tab nav-item active" data-tab="leitura"><span>📷</span><b>Leitura</b></button>
+          <button class="tab nav-item admin-only" data-tab="painel"><span>📊</span><b>Painel</b></button>
+          <button class="tab nav-item admin-only" data-tab="admin"><span>⚙️</span><b>Administração</b></button>
+          <button class="tab nav-item admin-only" data-tab="relatorios"><span>⬇️</span><b>Extrair</b></button>
+        </nav>
+
+        <div class="side-footer">
+          <div class="admin-only mini-status">
+            <span id="onlineStatus" class="pill">Verificando...</span>
+            <span id="pendingStatus" class="pill">Pendentes: 0</span>
+          </div>
+          <button id="btnSync" class="ghost admin-only">Sincronizar</button>
+          <button id="btnLogout" class="ghost">Sair</button>
+        </div>
+      </aside>
+
+      <section class="content">
+        <section id="tab-leitura" class="tab-panel active">
+          <div class="scan-page">
+            <div class="card scanner-card clean-scanner">
+              <div class="scan-title">
+                <h1>Escanear crachá</h1>
+                <p id="currentMeal">Refeição atual: carregando...</p>
+                <span id="scanMode" class="pill ok hidden">Pronto</span>
+              </div>
+
+              <video id="video" playsinline muted></video>
+
+              <div class="scanner-actions">
+                <button id="btnStartCamera" class="primary">Abrir câmera</button>
+                <button id="btnStopCamera" class="ghost">Parar</button>
+              </div>
+
+              <div class="manual-box">
+                <label>Leitor USB / teste manual</label>
+                <div class="inline">
+                  <input id="manualQr" type="text" placeholder="Passe o crachá ou cole o QR" />
+                  <button id="btnManualQr" class="primary">Ler</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card result-card clean-result">
+              <div id="resultBox" class="result neutral big-result">
+                <strong>Aguardando leitura</strong>
+                <span>Passe o crachá do colaborador.</span>
+              </div>
+
+              <div id="bindBox" class="bind-box hidden">
+                <h3>QR não vinculado</h3>
+                <p>Informe somente a matrícula ADM.</p>
+                <div class="inline">
+                  <input id="bindMatricula" type="text" placeholder="Matrícula" />
+                  <button id="btnBindMatricula" class="primary">Vincular</button>
+                </div>
+                <button id="btnCancelBind" class="ghost full">Cancelar</button>
+              </div>
+
+              <div class="quick-actions">
+                <button id="btnGuestAdm" class="secondary">Convidado ADM</button>
+                <button id="btnTerceiro" class="secondary">Terceiro</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-painel" class="tab-panel admin-only">
+          <div class="page-title">
+            <h1>Painel do dia</h1>
+            <p>Resumo administrativo de quantidade e custo.</p>
+          </div>
+          <div class="card">
+            <h2>Resumo de hoje</h2>
+            <div id="todaySummary" class="summary-grid"></div>
+          </div>
+          <div class="card mt">
+            <h2>Últimos registros locais</h2>
+            <div id="lastRecords"></div>
+          </div>
+        </section>
+
+        <section id="tab-admin" class="tab-panel admin-only">
+          <div class="page-title">
+            <h1>Administração</h1>
+            <p>Horários, custos, ativos/inativos e base local.</p>
+          </div>
+          <div class="grid two">
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <h2>Horários e custos</h2>
+                  <p>Ative/desative refeições e ajuste custo por refeição.</p>
+                </div>
+                <button id="btnLoadMeals" class="ghost">Atualizar</button>
+              </div>
+              <div id="mealsTableWrap"></div>
+              <button id="btnSaveMeals" class="primary full">Salvar alterações</button>
+            </div>
+
+            <div class="card">
+              <h2>Base local do aparelho</h2>
+              <div class="metric-list">
+                <div><span>Colaboradores</span><strong id="metricColabs">0</strong></div>
+                <div><span>QRs vinculados</span><strong id="metricQr">0</strong></div>
+                <div><span>Refeições cadastradas</span><strong id="metricMeals">0</strong></div>
+                <div><span>Registros locais</span><strong id="metricRegs">0</strong></div>
+              </div>
+              <button id="btnDownloadBase" class="primary full">Baixar base do Supabase</button>
+              <p class="hint">Faça isso no começo do dia ou quando alterar colaboradores/horários.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-relatorios" class="tab-panel admin-only">
+          <div class="page-title">
+            <h1>Extrair registros</h1>
+            <p>Exportação local ou base sincronizada no Supabase.</p>
+          </div>
+          <div class="grid two">
+            <div class="card">
+              <h2>Filtros</h2>
+              <label>Data inicial</label>
+              <input id="dateFrom" type="date" />
+              <label>Data final</label>
+              <input id="dateTo" type="date" />
+              <div class="inline">
+                <button id="btnExportLocal" class="primary">Extrair local CSV</button>
+                <button id="btnExportSupabase" class="secondary">Extrair Supabase CSV</button>
+              </div>
+              <p class="hint">Local = registros salvos neste aparelho. Supabase = base sincronizada online.</p>
+            </div>
+            <div class="card">
+              <h2>LGPD</h2>
+              <p class="hint">A tela de leitura não mostra custo, base ou informações administrativas. Isso fica apenas no perfil admin.</p>
+            </div>
+          </div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="guestDialog">
+    <form method="dialog" class="dialog-card">
+      <h2 id="guestTitle">Cadastro</h2>
+      <input id="guestType" type="hidden" />
+      <label>Nome completo</label>
+      <input id="guestName" type="text" placeholder="Nome completo" />
+      <div id="guestMatriculaBox">
+        <label>Matrícula</label>
+        <input id="guestMatricula" type="text" placeholder="Matrícula ADM" />
+      </div>
+      <label>CPF</label>
+      <input id="guestCpf" type="text" placeholder="000.000.000-00" />
+      <div id="guestUnidadeBox">
+        <label>Unidade de origem</label>
+        <input id="guestUnidade" type="text" placeholder="Ex.: ADM Imperatriz" />
+      </div>
+      <div id="guestEmpresaBox">
+        <label>Empresa</label>
+        <input id="guestEmpresa" type="text" placeholder="Nome da empresa terceira" />
+      </div>
+      <div class="inline">
+        <button id="btnRegisterGuest" class="primary" value="confirm">Registrar refeição</button>
+        <button class="ghost" value="cancel">Cancelar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./config.js?v=2"></script>
+  <script src="./app.js?v=2"></script>
+</body>
+</html>
