@@ -395,6 +395,20 @@ async function initDevice() {
    Scanner
 =========================== */
 
+// Canvas oculto reutilizado para leitura de frames
+let _scanCanvas = null;
+let _scanCtx = null;
+
+function getScanCanvas(width, height) {
+  if (!_scanCanvas) {
+    _scanCanvas = document.createElement("canvas");
+    _scanCtx = _scanCanvas.getContext("2d", { willReadFrequently: true });
+  }
+  _scanCanvas.width = width;
+  _scanCanvas.height = height;
+  return { canvas: _scanCanvas, ctx: _scanCtx };
+}
+
 async function startCamera() {
   try {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -403,24 +417,27 @@ async function startCamera() {
     }
 
     videoStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" },
+      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: false
     });
 
     $("video").srcObject = videoStream;
     await $("video").play();
 
-    if ("BarcodeDetector" in window) {
-      detector = new BarcodeDetector({ formats: ["qr_code"] });
+    // jsQR funciona em qualquer navegador — sem dependência de BarcodeDetector
+    if (typeof jsQR === "function") {
+      detector = true; // flag apenas para indicar que está ativo
       scanLoopActive = true;
       $("scanMode").textContent = "Lendo QR";
       $("scanMode").className = "pill ok";
+      $("scanMode").classList.remove("hidden");
       scanLoop();
       showToast("Câmera aberta.", "ok");
     } else {
-      $("scanMode").textContent = "Sem leitor nativo";
+      $("scanMode").textContent = "Biblioteca QR não carregou";
       $("scanMode").className = "pill warn";
-      showToast("Navegador sem BarcodeDetector. Use leitor USB ou entrada manual.", "warn");
+      $("scanMode").classList.remove("hidden");
+      showToast("jsQR não carregou. Verifique conexão ou use entrada manual.", "warn");
     }
   } catch (err) {
     showToast("Não consegui abrir a câmera: " + cleanError(err.message), "bad");
@@ -429,6 +446,7 @@ async function startCamera() {
 
 function stopCamera() {
   scanLoopActive = false;
+  detector = null;
   if (videoStream) {
     videoStream.getTracks().forEach((t) => t.stop());
     videoStream = null;
@@ -438,28 +456,34 @@ function stopCamera() {
   $("scanMode").className = "pill";
 }
 
-async function scanLoop() {
-  if (!scanLoopActive || !detector) return;
+function scanLoop() {
+  if (!scanLoopActive) return;
 
   try {
     const video = $("video");
-    if (video.readyState >= 2) {
-      const codes = await detector.detect(video);
-      if (codes.length) {
-        const qr = (codes[0].rawValue || "").trim();
+    if (video.readyState >= 2 && video.videoWidth > 0) {
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      const { canvas, ctx } = getScanCanvas(w, h);
+      ctx.drawImage(video, 0, 0, w, h);
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const result = jsQR(imageData.data, w, h, { inversionAttempts: "dontInvert" });
+      if (result) {
+        const qr = (result.data || "").trim();
         const now = Date.now();
         if (qr && (qr !== lastQr || now - lastQrAt > 2500)) {
           lastQr = qr;
           lastQrAt = now;
-          await processQr(qr);
+          processQr(qr);
         }
       }
     }
   } catch (err) {
-    console.warn(err);
+    console.warn("scanLoop erro:", err);
   }
 
-  requestAnimationFrame(scanLoop);
+  // ~15 fps é mais que suficiente para QR Code e não aquece o aparelho
+  setTimeout(() => requestAnimationFrame(scanLoop), 66);
 }
 
 async function processQr(qrToken) {
