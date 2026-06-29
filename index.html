@@ -2,10 +2,10 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>ADM Refeitório Offline</title>
   <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="stylesheet" href="./styles.css?v=2" />
+  <link rel="stylesheet" href="./styles.css?v=3" />
   <meta name="theme-color" content="#0f172a" />
 </head>
 <body>
@@ -28,29 +28,30 @@
       <input id="loginPassword" type="password" placeholder="Sua senha" autocomplete="current-password" />
 
       <button id="btnLogin" class="primary">Entrar</button>
-      <p class="hint">Edite o arquivo <b>config.js</b> com a URL e a chave pública do Supabase antes de usar.</p>
+      <p class="hint">
+        Edite o arquivo <b>config.js</b> com a URL e a chave pública do Supabase antes de usar.
+      </p>
     </section>
 
     <section id="appView" class="hidden app-layout">
-      <aside class="sidebar">
+      <aside id="sidebar" class="sidebar">
         <div class="side-brand">
           <div class="side-mark">✓</div>
           <div>
             <strong>Refeitório</strong>
             <span id="sideProfile">Offline</span>
-            <small id="userInfo">Usuário</small>
           </div>
         </div>
 
         <nav class="side-nav">
-          <button class="tab nav-item active" data-tab="leitura"><span>📷</span><b>Leitura</b></button>
-          <button class="tab nav-item admin-only" data-tab="painel"><span>📊</span><b>Painel</b></button>
-          <button class="tab nav-item admin-only" data-tab="admin"><span>⚙️</span><b>Administração</b></button>
-          <button class="tab nav-item admin-only" data-tab="relatorios"><span>⬇️</span><b>Extrair</b></button>
+          <button class="nav-item active" data-tab="leitura"><span>📷</span><b>Leitura</b></button>
+          <button class="nav-item admin-only" data-tab="painel"><span>📊</span><b>Painel</b></button>
+          <button class="nav-item admin-only" data-tab="admin"><span>⚙️</span><b>Administração</b></button>
+          <button class="nav-item admin-only" data-tab="relatorios"><span>⬇️</span><b>Extrair</b></button>
         </nav>
 
         <div class="side-footer">
-          <div class="admin-only mini-status">
+          <div id="adminMiniStatus" class="admin-only mini-status">
             <span id="onlineStatus" class="pill">Verificando...</span>
             <span id="pendingStatus" class="pill">Pendentes: 0</span>
           </div>
@@ -60,16 +61,23 @@
       </aside>
 
       <section class="content">
+        <header class="content-header admin-only">
+          <div>
+            <h1>ADM Refeitório Offline</h1>
+            <p id="userInfo">Usuário</p>
+          </div>
+          <button id="btnDownloadBaseTop" class="primary">Baixar base</button>
+        </header>
+
         <section id="tab-leitura" class="tab-panel active">
           <div class="scan-page">
             <div class="card scanner-card clean-scanner">
               <div class="scan-title">
                 <h1>Escanear crachá</h1>
                 <p id="currentMeal">Refeição atual: carregando...</p>
-                <span id="scanMode" class="pill ok hidden">Pronto</span>
               </div>
 
-              <video id="video" playsinline muted></video>
+              <div id="reader" class="reader-box"></div>
 
               <div class="scanner-actions">
                 <button id="btnStartCamera" class="primary">Abrir câmera</button>
@@ -118,7 +126,7 @@
             <h2>Resumo de hoje</h2>
             <div id="todaySummary" class="summary-grid"></div>
           </div>
-          <div class="card mt">
+          <div class="card">
             <h2>Últimos registros locais</h2>
             <div id="lastRecords"></div>
           </div>
@@ -129,6 +137,7 @@
             <h1>Administração</h1>
             <p>Horários, custos, ativos/inativos e base local.</p>
           </div>
+
           <div class="grid two">
             <div class="card">
               <div class="card-head">
@@ -161,6 +170,7 @@
             <h1>Extrair registros</h1>
             <p>Exportação local ou base sincronizada no Supabase.</p>
           </div>
+
           <div class="grid two">
             <div class="card">
               <h2>Filtros</h2>
@@ -174,9 +184,10 @@
               </div>
               <p class="hint">Local = registros salvos neste aparelho. Supabase = base sincronizada online.</p>
             </div>
+
             <div class="card">
-              <h2>LGPD</h2>
-              <p class="hint">A tela de leitura não mostra custo, base ou informações administrativas. Isso fica apenas no perfil admin.</p>
+              <h2>Observação LGPD</h2>
+              <p class="hint">Na tela de leitura o CPF não aparece. Relatórios administrativos mostram apenas os campos necessários.</p>
             </div>
           </div>
         </section>
@@ -187,23 +198,30 @@
   <dialog id="guestDialog">
     <form method="dialog" class="dialog-card">
       <h2 id="guestTitle">Cadastro</h2>
+
       <input id="guestType" type="hidden" />
+
       <label>Nome completo</label>
       <input id="guestName" type="text" placeholder="Nome completo" />
+
       <div id="guestMatriculaBox">
         <label>Matrícula</label>
         <input id="guestMatricula" type="text" placeholder="Matrícula ADM" />
       </div>
+
       <label>CPF</label>
       <input id="guestCpf" type="text" placeholder="000.000.000-00" />
+
       <div id="guestUnidadeBox">
         <label>Unidade de origem</label>
         <input id="guestUnidade" type="text" placeholder="Ex.: ADM Imperatriz" />
       </div>
+
       <div id="guestEmpresaBox">
         <label>Empresa</label>
         <input id="guestEmpresa" type="text" placeholder="Nome da empresa terceira" />
       </div>
+
       <div class="inline">
         <button id="btnRegisterGuest" class="primary" value="confirm">Registrar refeição</button>
         <button class="ghost" value="cancel">Cancelar</button>
@@ -211,9 +229,9 @@
     </form>
   </dialog>
 
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./config.js?v=2"></script>
-  <script src="./app.js?v=2"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="./config.js?v=3"></script>
+  <script src="./app.js?v=3"></script>
 </body>
 </html>

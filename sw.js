@@ -1,11 +1,11 @@
-const CACHE_NAME = "adm-refeitorio-offline-v2";
+const CACHE_NAME = "adm-refeitorio-offline-v3";
 
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./config.js",
+  "./styles.css?v=3",
+  "./app.js?v=3",
+  "./config.js?v=3",
   "./manifest.webmanifest"
 ];
 
@@ -27,7 +27,6 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-
   if (event.request.method !== "GET") return;
 
   if (url.origin === location.origin) {

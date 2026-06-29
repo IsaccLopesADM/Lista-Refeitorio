@@ -1,18 +1,19 @@
-/* ADM Refeitório Offline - MVP v1 */
+/* ADM Refeitório Offline - MVP v3
+   Leitor QR atualizado: html5-qrcode, compatível com iPhone/Safari/Chrome iOS.
+*/
 
 let sb = null;
 let currentUser = null;
 let currentProfile = null;
 let db = null;
-let videoStream = null;
-let scanLoopActive = false;
-let detector = null;
+let html5QrCode = null;
+let scannerRunning = false;
 let lastQr = "";
 let lastQrAt = 0;
 let pendingQrToBind = null;
 let deviceLocalId = null;
 
-const DB_NAME = "adm_refeitorio_offline_v1";
+const DB_NAME = "adm_refeitorio_offline_v3";
 const DB_VERSION = 1;
 
 const $ = (id) => document.getElementById(id);
@@ -30,12 +31,12 @@ async function init() {
   window.addEventListener("offline", updateOnlineStatus);
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker.register("./sw.js?v=3").catch(() => {});
   }
 
   const today = toISODate(new Date());
-  $("dateFrom").value = today;
-  $("dateTo").value = today;
+  if ($("dateFrom")) $("dateFrom").value = today;
+  if ($("dateTo")) $("dateTo").value = today;
 
   await refreshLocalMetrics();
   await refreshPendingCount();
@@ -49,37 +50,44 @@ function setupSupabase() {
   sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
 
-function bindUi() {
-  $("btnLogin").addEventListener("click", login);
-  $("btnLogout").addEventListener("click", logout);
-  $("btnSync").addEventListener("click", syncAll);
-  $("btnDownloadBase").addEventListener("click", downloadBase);
-  $("btnLoadMeals").addEventListener("click", renderMealsAdmin);
-  $("btnSaveMeals").addEventListener("click", saveMealsAdmin);
+function on(id, event, fn) {
+  const el = $(id);
+  if (el) el.addEventListener(event, fn);
+}
 
-  $("btnStartCamera").addEventListener("click", startCamera);
-  $("btnStopCamera").addEventListener("click", stopCamera);
-  $("btnManualQr").addEventListener("click", () => {
+function bindUi() {
+  on("btnLogin", "click", login);
+  on("btnLogout", "click", logout);
+  on("btnSync", "click", syncAll);
+  on("btnDownloadBase", "click", () => downloadBase(true));
+  on("btnDownloadBaseTop", "click", () => downloadBase(true));
+  on("btnLoadMeals", "click", renderMealsAdmin);
+  on("btnSaveMeals", "click", saveMealsAdmin);
+
+  on("btnStartCamera", "click", startCamera);
+  on("btnStopCamera", "click", stopCamera);
+
+  on("btnManualQr", "click", () => {
     const value = $("manualQr").value.trim();
     if (value) processQr(value);
     $("manualQr").value = "";
   });
 
-  $("manualQr").addEventListener("keydown", (e) => {
+  on("manualQr", "keydown", (e) => {
     if (e.key === "Enter") $("btnManualQr").click();
   });
 
-  $("btnBindMatricula").addEventListener("click", bindQrWithMatricula);
-  $("btnCancelBind").addEventListener("click", cancelBind);
+  on("btnBindMatricula", "click", bindQrWithMatricula);
+  on("btnCancelBind", "click", cancelBind);
 
-  $("btnGuestAdm").addEventListener("click", () => openGuestDialog("convidado_adm"));
-  $("btnTerceiro").addEventListener("click", () => openGuestDialog("terceiro"));
-  $("btnRegisterGuest").addEventListener("click", registerGuest);
+  on("btnGuestAdm", "click", () => openGuestDialog("convidado_adm"));
+  on("btnTerceiro", "click", () => openGuestDialog("terceiro"));
+  on("btnRegisterGuest", "click", registerGuest);
 
-  $("btnExportLocal").addEventListener("click", exportLocalCsv);
-  $("btnExportSupabase").addEventListener("click", exportSupabaseCsv);
+  on("btnExportLocal", "click", exportLocalCsv);
+  on("btnExportSupabase", "click", exportSupabaseCsv);
 
-  document.querySelectorAll(".tab").forEach((btn) => {
+  document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.addEventListener("click", () => activateTab(btn.dataset.tab));
   });
 }
@@ -106,12 +114,13 @@ async function login() {
 
     currentUser = data.user;
     await loadProfile();
-    document.body.classList.remove("role-admin", "role-refeitorio", "role-consulta");
-    document.body.classList.add(`role-${currentProfile.perfil}`);
-    if ($("sideProfile")) $("sideProfile").textContent = currentProfile.perfil === "admin" ? "Administrador" : "Leitura";
+    applyRoleLayout();
+
     $("loginView").classList.add("hidden");
     $("appView").classList.remove("hidden");
+
     if ($("userInfo")) $("userInfo").textContent = `${currentProfile.nome} • ${currentProfile.perfil}`;
+    if ($("sideProfile")) $("sideProfile").textContent = currentProfile.perfil === "admin" ? "Administrador" : "Leitura";
 
     await downloadBase(false);
     await renderAll();
@@ -135,8 +144,15 @@ async function loadProfile() {
   currentProfile = data;
 }
 
+function applyRoleLayout() {
+  document.body.classList.remove("role-admin", "role-refeitorio", "role-consulta");
+  document.body.classList.add(`role-${currentProfile.perfil}`);
+
+  if (currentProfile.perfil !== "admin") activateTab("leitura");
+}
+
 async function logout() {
-  stopCamera();
+  await stopCamera();
   if (sb) await sb.auth.signOut();
   currentUser = null;
   currentProfile = null;
@@ -149,22 +165,25 @@ async function renderAll() {
   await refreshCurrentMeal();
   await refreshLocalMetrics();
   await refreshPendingCount();
-  await renderMealsAdmin();
-  await renderTodaySummary();
-  await renderLastRecords();
+
+  if (currentProfile?.perfil === "admin") {
+    await renderMealsAdmin();
+    await renderTodaySummary();
+    await renderLastRecords();
+  }
 }
 
 function activateTab(name) {
-  document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach((b) => b.classList.remove("active"));
   document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
-  document.querySelector(`.tab[data-tab="${name}"]`).classList.add("active");
-  $(`tab-${name}`).classList.add("active");
+  const btn = document.querySelector(`.nav-item[data-tab="${name}"]`);
+  const panel = $(`tab-${name}`);
+  if (btn) btn.classList.add("active");
+  if (panel) panel.classList.add("active");
   renderAll();
 }
 
-/* ===========================
-   IndexedDB
-=========================== */
+/* IndexedDB */
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -184,9 +203,7 @@ function openDb() {
         s.createIndex("matricula", "matricula", { unique: false });
       }
 
-      if (!db.objectStoreNames.contains("refeicoes")) {
-        db.createObjectStore("refeicoes", { keyPath: "id" });
-      }
+      if (!db.objectStoreNames.contains("refeicoes")) db.createObjectStore("refeicoes", { keyPath: "id" });
 
       if (!db.objectStoreNames.contains("registros")) {
         const s = db.createObjectStore("registros", { keyPath: "local_id" });
@@ -194,13 +211,8 @@ function openDb() {
         s.createIndex("matricula", "matricula", { unique: false });
       }
 
-      if (!db.objectStoreNames.contains("pendentes")) {
-        db.createObjectStore("pendentes", { keyPath: "local_id" });
-      }
-
-      if (!db.objectStoreNames.contains("meta")) {
-        db.createObjectStore("meta", { keyPath: "key" });
-      }
+      if (!db.objectStoreNames.contains("pendentes")) db.createObjectStore("pendentes", { keyPath: "local_id" });
+      if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "key" });
     };
 
     req.onsuccess = () => resolve(req.result);
@@ -265,9 +277,7 @@ async function replaceStore(store, rows) {
   for (const row of rows) await idbPut(store, row);
 }
 
-/* ===========================
-   Base e sync
-=========================== */
+/* Base e sync */
 
 async function downloadBase(showMessage = true) {
   if (!sb || !navigator.onLine || !currentUser) {
@@ -316,11 +326,8 @@ async function syncAll() {
 
   for (const item of pendentes) {
     try {
-      if (item.tipo === "qr_vinculo") {
-        await syncQrVinculo(item);
-      } else if (item.tipo === "registro") {
-        await syncRegistro(item.registro);
-      }
+      if (item.tipo === "qr_vinculo") await syncQrVinculo(item);
+      else if (item.tipo === "registro") await syncRegistro(item.registro);
       await idbDelete("pendentes", item.local_id);
       ok++;
     } catch (err) {
@@ -345,7 +352,6 @@ async function syncAll() {
 async function syncQrVinculo(item) {
   const payload = { ...item.vinculo };
   delete payload.local_id;
-
   const { error } = await sb.from("qr_vinculos").insert(payload);
   if (error) throw error;
 }
@@ -367,14 +373,14 @@ function supabaseRegistroPayload(record) {
 }
 
 async function refreshPendingCount() {
+  const el = $("pendingStatus");
+  if (!el) return;
   const rows = await idbGetAll("pendentes");
-  $("pendingStatus").textContent = `Pendentes: ${rows.length}`;
-  $("pendingStatus").className = rows.length ? "pill warn" : "pill ok";
+  el.textContent = `Pendentes: ${rows.length}`;
+  el.className = rows.length ? "pill warn" : "pill ok";
 }
 
-/* ===========================
-   Dispositivo
-=========================== */
+/* Dispositivo */
 
 async function initDevice() {
   let meta = await idbGet("meta", "device");
@@ -391,99 +397,69 @@ async function initDevice() {
   deviceLocalId = meta.id;
 }
 
-/* ===========================
-   Scanner
-=========================== */
-
-// Canvas oculto reutilizado para leitura de frames
-let _scanCanvas = null;
-let _scanCtx = null;
-
-function getScanCanvas(width, height) {
-  if (!_scanCanvas) {
-    _scanCanvas = document.createElement("canvas");
-    _scanCtx = _scanCanvas.getContext("2d", { willReadFrequently: true });
-  }
-  _scanCanvas.width = width;
-  _scanCanvas.height = height;
-  return { canvas: _scanCanvas, ctx: _scanCtx };
-}
+/* Scanner com html5-qrcode */
 
 async function startCamera() {
   try {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      showToast("Este navegador não liberou câmera. Use entrada manual/leitor USB.", "warn");
+    if (!window.Html5Qrcode) {
+      showToast("Biblioteca de QR não carregou. Verifique internet/cache.", "bad");
       return;
     }
 
-    videoStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
-    });
+    if (scannerRunning) return;
 
-    $("video").srcObject = videoStream;
-    await $("video").play();
+    const readerId = "reader";
+    if (!html5QrCode) html5QrCode = new Html5Qrcode(readerId, { verbose: false });
 
-    // jsQR funciona em qualquer navegador — sem dependência de BarcodeDetector
-    if (typeof jsQR === "function") {
-      detector = true; // flag apenas para indicar que está ativo
-      scanLoopActive = true;
-      $("scanMode").textContent = "Lendo QR";
-      $("scanMode").className = "pill ok";
-      $("scanMode").classList.remove("hidden");
-      scanLoop();
-      showToast("Câmera aberta.", "ok");
-    } else {
-      $("scanMode").textContent = "Biblioteca QR não carregou";
-      $("scanMode").className = "pill warn";
-      $("scanMode").classList.remove("hidden");
-      showToast("jsQR não carregou. Verifique conexão ou use entrada manual.", "warn");
-    }
+    const config = {
+      fps: 10,
+      qrbox: function(viewfinderWidth, viewfinderHeight) {
+        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+        const boxSize = Math.floor(minEdge * 0.72);
+        return { width: boxSize, height: boxSize };
+      },
+      aspectRatio: 1.333,
+      rememberLastUsedCamera: true,
+      supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+    };
+
+    const cameraConfig = { facingMode: "environment" };
+
+    await html5QrCode.start(
+      cameraConfig,
+      config,
+      async (decodedText) => {
+        const qr = String(decodedText || "").trim();
+        const now = Date.now();
+
+        if (!qr) return;
+        if (qr === lastQr && now - lastQrAt < 2500) return;
+
+        lastQr = qr;
+        lastQrAt = now;
+        await processQr(qr);
+      },
+      () => {}
+    );
+
+    scannerRunning = true;
+    showToast("Câmera aberta.", "ok");
   } catch (err) {
     showToast("Não consegui abrir a câmera: " + cleanError(err.message), "bad");
   }
 }
 
-function stopCamera() {
-  scanLoopActive = false;
-  detector = null;
-  if (videoStream) {
-    videoStream.getTracks().forEach((t) => t.stop());
-    videoStream = null;
-  }
-  $("video").srcObject = null;
-  $("scanMode").textContent = "Parado";
-  $("scanMode").className = "pill";
-}
-
-function scanLoop() {
-  if (!scanLoopActive) return;
-
+async function stopCamera() {
   try {
-    const video = $("video");
-    if (video.readyState >= 2 && video.videoWidth > 0) {
-      const w = video.videoWidth;
-      const h = video.videoHeight;
-      const { canvas, ctx } = getScanCanvas(w, h);
-      ctx.drawImage(video, 0, 0, w, h);
-      const imageData = ctx.getImageData(0, 0, w, h);
-      const result = jsQR(imageData.data, w, h, { inversionAttempts: "dontInvert" });
-      if (result) {
-        const qr = (result.data || "").trim();
-        const now = Date.now();
-        if (qr && (qr !== lastQr || now - lastQrAt > 2500)) {
-          lastQr = qr;
-          lastQrAt = now;
-          processQr(qr);
-        }
-      }
+    if (html5QrCode && scannerRunning) {
+      await html5QrCode.stop();
+      await html5QrCode.clear();
     }
   } catch (err) {
-    console.warn("scanLoop erro:", err);
+    console.warn("Erro ao parar câmera", err);
+  } finally {
+    scannerRunning = false;
   }
-
-  // ~15 fps é mais que suficiente para QR Code e não aquece o aparelho
-  setTimeout(() => requestAnimationFrame(scanLoop), 66);
 }
 
 async function processQr(qrToken) {
@@ -492,14 +468,14 @@ async function processQr(qrToken) {
 
   const meal = await getCurrentMeal();
   if (!meal) {
-    failResult("Fora de horário", "Nenhuma refeição ativa agora.", true);
+    failResult("Fora de horário", "Nenhuma refeição ativa agora.");
     return;
   }
 
   const vinculo = await idbGet("qr_vinculos", qrToken);
   if (!vinculo || !vinculo.ativo) {
     pendingQrToBind = qrToken;
-    warnResult("QR não vinculado", "Digite a matrícula ADM para vincular este QR ao colaborador.");
+    warnResult("QR não vinculado", "Digite a matrícula ADM.");
     $("bindBox").classList.remove("hidden");
     $("bindMatricula").focus();
     playFail();
@@ -508,7 +484,7 @@ async function processQr(qrToken) {
 
   const colab = await idbGet("colaboradores", vinculo.colaborador_id);
   if (!colab) {
-    failResult("Vínculo inválido", "QR vinculado, mas colaborador não existe na base local.");
+    failResult("Vínculo inválido", "Colaborador não existe na base local.");
     return;
   }
 
@@ -528,19 +504,19 @@ async function bindQrWithMatricula() {
 
   const colab = await idbGetByIndex("colaboradores", "matricula", matricula);
   if (!colab) {
-    failResult("Matrícula não encontrada", "Essa matrícula não está na base ADM local.");
+    failResult("Matrícula não encontrada", "Essa matrícula não está na base ADM.");
     return;
   }
 
   if (!isColabLiberado(colab)) {
-    failResult("Colaborador bloqueado", `${colab.nome_completo} está com situação ${colab.situacao || "N/I"}.`);
+    failResult("Colaborador bloqueado", `${colab.nome_completo} está ${colab.situacao || "N/I"}.`);
     return;
   }
 
   const qrs = await idbGetAll("qr_vinculos");
   const existingByMatricula = qrs.find((q) => q.matricula === matricula && q.ativo && q.qr_token !== pendingQrToBind);
   if (existingByMatricula) {
-    failResult("Matrícula já tem QR", "Somente admin deve trocar o QR de um colaborador.");
+    failResult("Matrícula já tem QR", "Peça ao admin para trocar o QR.");
     return;
   }
 
@@ -588,16 +564,14 @@ async function bindQrWithMatricula() {
 function cancelBind() {
   pendingQrToBind = null;
   hideBindBox();
-  neutralResult("Aguardando leitura", "Passe o crachá ou escaneie o QR.");
+  neutralResult("Aguardando leitura", "Passe o crachá do colaborador.");
 }
 
 function hideBindBox() {
   $("bindBox").classList.add("hidden");
 }
 
-/* ===========================
-   Refeição e registro
-=========================== */
+/* Refeição e registro */
 
 async function getCurrentMeal(now = new Date()) {
   const refeicoes = (await idbGetAll("refeicoes")).filter((r) => r.ativo);
@@ -620,9 +594,7 @@ async function getCurrentMeal(now = new Date()) {
       }
     }
 
-    if (active) {
-      return { ...meal, data_refeicao: dataRef };
-    }
+    if (active) return { ...meal, data_refeicao: dataRef };
   }
 
   return null;
@@ -630,14 +602,17 @@ async function getCurrentMeal(now = new Date()) {
 
 async function refreshCurrentMeal() {
   const meal = await getCurrentMeal();
+  const el = $("currentMeal");
+  if (!el) return;
+
   if (meal) {
-    if (currentProfile && currentProfile.perfil !== "admin") {
-      $("currentMeal").textContent = `Refeição atual: ${meal.nome}`;
+    if (currentProfile?.perfil === "admin") {
+      el.textContent = `Refeição atual: ${meal.nome} • R$ ${money(meal.custo)} • dia ${formatDateBR(meal.data_refeicao)}`;
     } else {
-      $("currentMeal").textContent = `Refeição atual: ${meal.nome} • R$ ${money(meal.custo)} • dia ${formatDateBR(meal.data_refeicao)}`;
+      el.textContent = `Refeição atual: ${meal.nome}`;
     }
   } else {
-    $("currentMeal").textContent = "Refeição atual: nenhuma refeição ativa";
+    el.textContent = "Nenhuma refeição ativa agora";
   }
 }
 
@@ -648,7 +623,7 @@ function isColabLiberado(colab) {
 
 async function registerColaboradorMeal(colab, qrToken, meal) {
   if (!isColabLiberado(colab)) {
-    failResult("Colaborador bloqueado", `${colab.nome_completo} está com situação ${colab.situacao || "N/I"}.`);
+    failResult("Bloqueado", `${colab.nome_completo} está ${colab.situacao || "N/I"}.`);
     return;
   }
 
@@ -661,10 +636,7 @@ async function registerColaboradorMeal(colab, qrToken, meal) {
   });
 
   if (duplicate) {
-    warnResult(
-      "Já registrado",
-      `${colab.nome_completo} já registrou ${meal.nome} hoje às ${formatTime(duplicate.hora_registro)}.`
-    );
+    warnResult("Já registrado", `${colab.nome_completo} • ${formatTime(duplicate.hora_registro)}`);
     playFail();
     return;
   }
@@ -682,10 +654,11 @@ async function registerColaboradorMeal(colab, qrToken, meal) {
   });
 
   await saveRegistro(record);
-  if (currentProfile && currentProfile.perfil !== "admin") {
-    okResult("Liberado", `${colab.nome_completo}`);
-  } else {
+
+  if (currentProfile?.perfil === "admin") {
     okResult(`${meal.nome} registrado`, `${colab.nome_completo} • Matrícula ${colab.matricula} • R$ ${money(meal.custo)}`);
+  } else {
+    okResult("Liberado", `${colab.nome_completo}`);
   }
 }
 
@@ -716,7 +689,7 @@ async function registerGuest(e) {
 
   const meal = await getCurrentMeal();
   if (!meal) {
-    failResult("Fora de horário", "Nenhuma refeição ativa agora.", true);
+    failResult("Fora de horário", "Nenhuma refeição ativa agora.");
     return;
   }
 
@@ -729,7 +702,7 @@ async function registerGuest(e) {
   });
 
   if (duplicate) {
-    warnResult("Já registrado", `${nome} já registrou ${meal.nome} hoje às ${formatTime(duplicate.hora_registro)}.`);
+    warnResult("Já registrado", `${nome} • ${formatTime(duplicate.hora_registro)}`);
     playFail();
     return;
   }
@@ -748,11 +721,13 @@ async function registerGuest(e) {
 
   await saveRegistro(record);
   $("guestDialog").close();
-  if (currentProfile && currentProfile.perfil !== "admin") {
-    okResult("Liberado", nome);
-  } else {
+
+  if (currentProfile?.perfil === "admin") {
     okResult(`${meal.nome} registrado`, `${nome} • ${tipo === "terceiro" ? empresa : "Convidado ADM"} • R$ ${money(meal.custo)}`);
+  } else {
+    okResult("Liberado", nome);
   }
+
   clearGuestForm();
 }
 
@@ -810,8 +785,10 @@ async function saveRegistro(record) {
 
   await refreshPendingCount();
   await refreshLocalMetrics();
-  await renderTodaySummary();
-  await renderLastRecords();
+  if (currentProfile?.perfil === "admin") {
+    await renderTodaySummary();
+    await renderLastRecords();
+  }
 }
 
 async function hasDuplicate({ tipo_pessoa, matricula, cpf, data_refeicao, refeicao_nome }) {
@@ -824,24 +801,23 @@ async function hasDuplicate({ tipo_pessoa, matricula, cpf, data_refeicao, refeic
       return r.tipo_pessoa === "colaborador_adm" && r.matricula && r.matricula === matricula;
     }
 
-    if (cpf) {
-      return r.tipo_pessoa === tipo_pessoa && onlyDigits(r.cpf || "") === cpf;
-    }
+    if (cpf) return r.tipo_pessoa === tipo_pessoa && onlyDigits(r.cpf || "") === cpf;
 
     return false;
   });
 }
 
-/* ===========================
-   Admin
-=========================== */
+/* Admin */
 
 async function renderMealsAdmin() {
+  const wrap = $("mealsTableWrap");
+  if (!wrap) return;
+
   const meals = await idbGetAll("refeicoes");
   meals.sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
 
   if (!meals.length) {
-    $("mealsTableWrap").innerHTML = `<p class="hint">Nenhuma refeição local. Clique em "Baixar base do Supabase".</p>`;
+    wrap.innerHTML = `<p class="hint">Nenhuma refeição local. Clique em "Baixar base do Supabase".</p>`;
     return;
   }
 
@@ -855,7 +831,7 @@ async function renderMealsAdmin() {
     </tr>
   `).join("");
 
-  $("mealsTableWrap").innerHTML = `
+  wrap.innerHTML = `
     <table class="meals-table">
       <thead>
         <tr>
@@ -924,17 +900,18 @@ async function saveMealsAdmin() {
 }
 
 async function refreshLocalMetrics() {
-  $("metricColabs").textContent = (await idbGetAll("colaboradores")).length;
-  $("metricQr").textContent = (await idbGetAll("qr_vinculos")).length;
-  $("metricMeals").textContent = (await idbGetAll("refeicoes")).length;
-  $("metricRegs").textContent = (await idbGetAll("registros")).length;
+  if ($("metricColabs")) $("metricColabs").textContent = (await idbGetAll("colaboradores")).length;
+  if ($("metricQr")) $("metricQr").textContent = (await idbGetAll("qr_vinculos")).length;
+  if ($("metricMeals")) $("metricMeals").textContent = (await idbGetAll("refeicoes")).length;
+  if ($("metricRegs")) $("metricRegs").textContent = (await idbGetAll("registros")).length;
 }
 
-/* ===========================
-   Relatórios
-=========================== */
+/* Relatórios */
 
 async function renderTodaySummary() {
+  const el = $("todaySummary");
+  if (!el) return;
+
   const today = toISODate(new Date());
   const regs = (await idbGetAll("registros")).filter((r) => r.data_refeicao === today);
 
@@ -958,7 +935,7 @@ async function renderTodaySummary() {
     </div>
   `).join("");
 
-  $("todaySummary").innerHTML = `
+  el.innerHTML = `
     ${cards || `<div class="summary-card"><span>Sem registros</span><strong>0</strong><span>Hoje</span></div>`}
     <div class="summary-card">
       <span>Total dia</span>
@@ -969,16 +946,19 @@ async function renderTodaySummary() {
 }
 
 async function renderLastRecords() {
+  const el = $("lastRecords");
+  if (!el) return;
+
   const regs = await idbGetAll("registros");
   regs.sort((a, b) => new Date(b.hora_registro) - new Date(a.hora_registro));
   const top = regs.slice(0, 12);
 
   if (!top.length) {
-    $("lastRecords").innerHTML = `<p class="hint">Nenhum registro local.</p>`;
+    el.innerHTML = `<p class="hint">Nenhum registro local.</p>`;
     return;
   }
 
-  $("lastRecords").innerHTML = `
+  el.innerHTML = `
     <table class="records-table">
       <thead>
         <tr>
@@ -1028,9 +1008,7 @@ async function exportSupabaseCsv() {
   downloadCsv("registros_refeitorio_supabase.csv", regsToCsv(data || []));
 }
 
-/* ===========================
-   Convidados
-=========================== */
+/* Convidados */
 
 function openGuestDialog(tipo) {
   $("guestType").value = tipo;
@@ -1050,9 +1028,7 @@ function clearGuestForm() {
   ["guestName", "guestMatricula", "guestCpf", "guestUnidade", "guestEmpresa"].forEach((id) => $(id).value = "");
 }
 
-/* ===========================
-   UI resultado e som
-=========================== */
+/* UI resultado e som */
 
 function okResult(title, msg) {
   $("resultBox").className = "result ok big-result";
@@ -1060,7 +1036,7 @@ function okResult(title, msg) {
   playOk();
 }
 
-function failResult(title, msg, noMeal = false) {
+function failResult(title, msg) {
   $("resultBox").className = "result bad big-result";
   $("resultBox").innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(msg)}</span>`;
   playFail();
@@ -1112,20 +1088,21 @@ function showToast(msg, type = "ok") {
 }
 
 function updateOnlineStatus() {
+  const el = $("onlineStatus");
+  if (!el) return;
   const online = navigator.onLine;
-  $("onlineStatus").textContent = online ? "Online" : "Offline";
-  $("onlineStatus").className = online ? "pill ok" : "pill bad";
+  el.textContent = online ? "Online" : "Offline";
+  el.className = online ? "pill ok" : "pill bad";
 }
 
 function setButtonLoading(id, loading, text) {
   const btn = $(id);
+  if (!btn) return;
   btn.disabled = loading;
   btn.textContent = text;
 }
 
-/* ===========================
-   Utils
-=========================== */
+/* Utils */
 
 function timeToMinutes(time) {
   const [h, m] = String(time).slice(0, 5).split(":").map(Number);
@@ -1181,10 +1158,7 @@ function regsToCsv(rows) {
   ];
 
   const lines = [headers.join(";")];
-
-  for (const r of rows) {
-    lines.push(headers.map((h) => csvCell(r[h])).join(";"));
-  }
+  for (const r of rows) lines.push(headers.map((h) => csvCell(r[h])).join(";"));
 
   return "\ufeff" + lines.join("\n");
 }
@@ -1218,5 +1192,8 @@ function escapeAttr(str) {
 }
 
 function cleanError(msg) {
-  return String(msg || "erro desconhecido").replace(/JWT|token/gi, "autenticação");
+  return String(msg || "erro desconhecido")
+    .replace(/JWT|token/gi, "autenticação")
+    .replace("NotAllowedError", "permissão da câmera negada")
+    .replace("NotFoundError", "câmera não encontrada");
 }
