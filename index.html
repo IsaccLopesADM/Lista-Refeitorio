@@ -5,40 +5,42 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>ADM Refeitório Offline</title>
   <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="stylesheet" href="./styles.css?v=3" />
-  <meta name="theme-color" content="#0f172a" />
+  <link rel="stylesheet" href="./styles.css?v=5" />
+  <meta name="theme-color" content="#0f3b63" />
 </head>
 <body>
   <div id="toast" class="toast hidden"></div>
+  <div id="scanFlash" class="scan-flash hidden">
+    <div class="scan-flash-card">
+      <div id="scanFlashIcon" class="scan-flash-icon">✓</div>
+      <div id="scanFlashTitle" class="scan-flash-title">LIBERADO</div>
+      <div id="scanFlashMsg" class="scan-flash-msg">Refeição registrada com sucesso.</div>
+    </div>
+  </div>
 
-  <main class="app-shell">
-    <section id="loginView" class="login-card">
+  <main class="app-shell fabric-bg">
+    <section id="loginView" class="login-card hidden">
       <div class="brand">
-        <div class="brand-mark">✓</div>
+        <div class="brand-mark">🍽</div>
         <div>
           <h1>Refeitório Offline</h1>
-          <p>Controle de refeições por QR Code</p>
+          <p>Controle corporativo de refeições</p>
         </div>
       </div>
-
       <label>E-mail</label>
       <input id="loginEmail" type="email" placeholder="admin@empresa.com" autocomplete="username" />
-
       <label>Senha</label>
       <input id="loginPassword" type="password" placeholder="Sua senha" autocomplete="current-password" />
-
       <button id="btnLogin" class="primary">Entrar</button>
-      <p class="hint">
-        Edite o arquivo <b>config.js</b> com a URL e a chave pública do Supabase antes de usar.
-      </p>
+      <p class="hint">Primeiro acesso: entre online uma vez para salvar o aparelho.</p>
     </section>
 
     <section id="appView" class="hidden app-layout">
-      <aside id="sidebar" class="sidebar">
+      <aside id="sidebar" class="sidebar fabric-panel">
         <div class="side-brand">
-          <div class="side-mark">✓</div>
+          <div class="side-mark">🍽</div>
           <div>
-            <strong>Refeitório</strong>
+            <strong>Refeitório ADM</strong>
             <span id="sideProfile">Offline</span>
           </div>
         </div>
@@ -46,6 +48,7 @@
         <nav class="side-nav">
           <button class="nav-item active" data-tab="leitura"><span>📷</span><b>Leitura</b></button>
           <button class="nav-item admin-only" data-tab="painel"><span>📊</span><b>Painel</b></button>
+          <button class="nav-item admin-only" data-tab="colaboradores"><span>👥</span><b>Colaboradores</b></button>
           <button class="nav-item admin-only" data-tab="admin"><span>⚙️</span><b>Administração</b></button>
           <button class="nav-item admin-only" data-tab="relatorios"><span>⬇️</span><b>Extrair</b></button>
         </nav>
@@ -61,7 +64,7 @@
       </aside>
 
       <section class="content">
-        <header class="content-header admin-only">
+        <header class="content-header admin-only fabric-panel">
           <div>
             <h1>ADM Refeitório Offline</h1>
             <p id="userInfo">Usuário</p>
@@ -70,20 +73,17 @@
         </header>
 
         <section id="tab-leitura" class="tab-panel active">
-          <div class="scan-page">
-            <div class="card scanner-card clean-scanner">
+          <div class="scan-page compact-scan">
+            <div class="card scanner-card fabric-panel">
               <div class="scan-title">
                 <h1>Escanear crachá</h1>
                 <p id="currentMeal">Refeição atual: carregando...</p>
               </div>
-
               <div id="reader" class="reader-box"></div>
-
               <div class="scanner-actions">
                 <button id="btnStartCamera" class="primary">Abrir câmera</button>
                 <button id="btnStopCamera" class="ghost">Parar</button>
               </div>
-
               <div class="manual-box">
                 <label>Leitor USB / teste manual</label>
                 <div class="inline">
@@ -93,8 +93,16 @@
               </div>
             </div>
 
-            <div class="card result-card clean-result">
-              <div id="resultBox" class="result neutral big-result">
+            <div class="card result-card fabric-panel">
+              <div class="result-header">
+                <div>
+                  <h2>Status</h2>
+                  <p>Confirmação rápida de leitura</p>
+                </div>
+                <div class="meal-mini" id="mealBadge">Aguardando</div>
+              </div>
+
+              <div id="resultBox" class="result neutral compact-result">
                 <strong>Aguardando leitura</strong>
                 <span>Passe o crachá do colaborador.</span>
               </div>
@@ -122,13 +130,60 @@
             <h1>Painel do dia</h1>
             <p>Resumo administrativo de quantidade e custo.</p>
           </div>
-          <div class="card">
+          <div class="card fabric-panel">
             <h2>Resumo de hoje</h2>
             <div id="todaySummary" class="summary-grid"></div>
           </div>
-          <div class="card">
+          <div class="card fabric-panel">
             <h2>Últimos registros locais</h2>
             <div id="lastRecords"></div>
+          </div>
+        </section>
+
+        <section id="tab-colaboradores" class="tab-panel admin-only">
+          <div class="page-title">
+            <h1>Colaboradores</h1>
+            <p>Cadastro rápido, inativação e geração de QR Code.</p>
+          </div>
+          <div class="grid two-colaborador">
+            <div class="card fabric-panel">
+              <div class="card-head stack-mobile">
+                <div>
+                  <h2>Cadastro e busca</h2>
+                  <p>Cadastre novos colaboradores sem QR e gere o código na hora.</p>
+                </div>
+                <button id="btnNovoColaborador" class="primary">+ Novo colaborador</button>
+              </div>
+              <div class="inline inline-wrap">
+                <input id="colabSearch" type="text" placeholder="Buscar por nome ou matrícula" />
+                <button id="btnSearchColab" class="ghost">Buscar</button>
+                <button id="btnRefreshColab" class="ghost">Atualizar</button>
+              </div>
+              <div id="colabCounters" class="metric-list mini-metric-list"></div>
+              <div id="colabListWrap"></div>
+            </div>
+
+            <div class="card fabric-panel">
+              <h2>Fluxo sugerido</h2>
+              <ol class="hint-list">
+                <li>Clique em <b>Novo colaborador</b>.</li>
+                <li>Preencha matrícula, nome e setor.</li>
+                <li>Salve e o sistema gera o QR automaticamente.</li>
+                <li>Mostre o QR na tela ou imprima.</li>
+                <li>Se precisar bloquear, clique em <b>Inativar</b>.</li>
+              </ol>
+              <div id="qrPreviewCard" class="qr-preview-card hidden">
+                <div class="qr-preview-head">
+                  <h3>QR gerado</h3>
+                  <div class="inline inline-wrap">
+                    <button id="btnPrintQr" class="primary">Imprimir QR</button>
+                    <button id="btnCloseQrPreview" class="ghost">Fechar</button>
+                  </div>
+                </div>
+                <div id="qrPreviewMeta" class="hint"></div>
+                <div id="qrPreviewBox" class="qr-box"></div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -137,9 +192,8 @@
             <h1>Administração</h1>
             <p>Horários, custos, ativos/inativos e base local.</p>
           </div>
-
           <div class="grid two">
-            <div class="card">
+            <div class="card fabric-panel">
               <div class="card-head">
                 <div>
                   <h2>Horários e custos</h2>
@@ -150,8 +204,7 @@
               <div id="mealsTableWrap"></div>
               <button id="btnSaveMeals" class="primary full">Salvar alterações</button>
             </div>
-
-            <div class="card">
+            <div class="card fabric-panel">
               <h2>Base local do aparelho</h2>
               <div class="metric-list">
                 <div><span>Colaboradores</span><strong id="metricColabs">0</strong></div>
@@ -170,9 +223,8 @@
             <h1>Extrair registros</h1>
             <p>Exportação local ou base sincronizada no Supabase.</p>
           </div>
-
           <div class="grid two">
-            <div class="card">
+            <div class="card fabric-panel">
               <h2>Filtros</h2>
               <label>Data inicial</label>
               <input id="dateFrom" type="date" />
@@ -184,8 +236,7 @@
               </div>
               <p class="hint">Local = registros salvos neste aparelho. Supabase = base sincronizada online.</p>
             </div>
-
-            <div class="card">
+            <div class="card fabric-panel">
               <h2>Observação LGPD</h2>
               <p class="hint">Na tela de leitura o CPF não aparece. Relatórios administrativos mostram apenas os campos necessários.</p>
             </div>
@@ -196,32 +247,25 @@
   </main>
 
   <dialog id="guestDialog">
-    <form method="dialog" class="dialog-card">
+    <form method="dialog" class="dialog-card fabric-panel">
       <h2 id="guestTitle">Cadastro</h2>
-
       <input id="guestType" type="hidden" />
-
       <label>Nome completo</label>
       <input id="guestName" type="text" placeholder="Nome completo" />
-
       <div id="guestMatriculaBox">
         <label>Matrícula</label>
         <input id="guestMatricula" type="text" placeholder="Matrícula ADM" />
       </div>
-
       <label>CPF</label>
       <input id="guestCpf" type="text" placeholder="000.000.000-00" />
-
       <div id="guestUnidadeBox">
         <label>Unidade de origem</label>
         <input id="guestUnidade" type="text" placeholder="Ex.: ADM Imperatriz" />
       </div>
-
       <div id="guestEmpresaBox">
         <label>Empresa</label>
         <input id="guestEmpresa" type="text" placeholder="Nome da empresa terceira" />
       </div>
-
       <div class="inline">
         <button id="btnRegisterGuest" class="primary" value="confirm">Registrar refeição</button>
         <button class="ghost" value="cancel">Cancelar</button>
@@ -229,9 +273,33 @@
     </form>
   </dialog>
 
+  <dialog id="colabDialog">
+    <form method="dialog" class="dialog-card fabric-panel">
+      <h2>Novo colaborador</h2>
+      <input id="colabId" type="hidden" />
+      <label>Matrícula *</label>
+      <input id="colabMatricula" type="text" placeholder="Matrícula" />
+      <label>Nome completo *</label>
+      <input id="colabNome" type="text" placeholder="Nome completo" />
+      <label>Departamento / Setor *</label>
+      <input id="colabDepartamento" type="text" placeholder="Setor" />
+      <label>Localidade</label>
+      <input id="colabLocalidade" type="text" placeholder="Ex.: B139-ADM PORTO FRANCO" />
+      <label>Cargo</label>
+      <input id="colabCargo" type="text" placeholder="Cargo" />
+      <label>Gestor</label>
+      <input id="colabGestor" type="text" placeholder="Gestor" />
+      <div class="inline">
+        <button id="btnSaveColaborador" class="primary" value="confirm">Salvar e gerar QR</button>
+        <button id="btnCancelColaborador" class="ghost" value="cancel">Cancelar</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/html5-qrcode"></script>
-  <script src="./config.js?v=3"></script>
-  <script src="./app.js?v=4"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="./config.js?v=5"></script>
+  <script src="./app.js?v=5"></script>
 </body>
 </html>
